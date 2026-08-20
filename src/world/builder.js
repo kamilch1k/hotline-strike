@@ -47,6 +47,18 @@ export class Assembler {
     this._static = new Map(); // palette key -> Accum
     this._protos = new Map(); // id -> { geo, key, instances[], masks[], opts }
     this._collide = new Map(); // surface -> Accum
+    /**
+     * Collision that is NOT plain LAYER.STATIC, keyed `surface|layer`.
+     *
+     * Kept separate from `_collide` rather than re-keying it, because every
+     * existing caller wants STATIC and this is the rare case. What it buys is
+     * roofs: geometry on LAYER.SHOOT_ONLY stops bullets (it is in MASK.BULLET)
+     * while being invisible to MASK.WORLD and MASK.CHARACTER — so the nav grid,
+     * which ray-casts DOWN and takes the first surface it meets, never sees the
+     * roof and keeps reading the floor of the room underneath. That is the only
+     * way to put a lid on a room when the nav grid is a single height field.
+     */
+    this._collideLayered = new Map(); // `surface|layer` -> { surface, layer, acc }
     this._geoCache = new Map(); // kit piece key -> BufferGeometry
     this.lights = [];
     this.meshes = [];
@@ -283,6 +295,21 @@ export class Assembler {
   }
 
   /** Register real triangles as collision (ramps, terrain, odd shapes). */
+  /**
+   * Collision geometry on a specific physics LAYER. See `_collideLayered`.
+   * `layer` is a bit from physics/surfaces.js LAYER.
+   */
+  collideGeoLayer(surface, layer, geo, matrix = null) {
+    const key = `${surface}|${layer}`;
+    let e = this._collideLayered.get(key);
+    if (!e) {
+      e = { surface, layer, acc: new Accum(`collide:${surface}:${layer}`) };
+      this._collideLayered.set(key, e);
+    }
+    e.acc.add(geo, this._x(matrix));
+    return this;
+  }
+
   collideGeo(surface, geo, matrix = null) {
     let a = this._collide.get(surface);
     if (!a) {
@@ -415,6 +442,19 @@ export class Assembler {
       this.stats.collideTris += geo.index.count / 3;
       if (physics) this.handles.push(physics.addStatic(mesh, surface));
     }
+    // Same again for anything that asked for a non-STATIC layer.
+    for (const { surface, layer, acc } of this._collideLayered.values()) {
+      if (acc.empty) continue;
+      const geo = acc.build();
+      const mesh = new THREE.Mesh(geo, INVISIBLE);
+      mesh.name = `collide_${surface}_l${layer}`;
+      mesh.visible = false;
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      this.collisionRoot.add(mesh);
+      this.stats.collideTris += geo.index.count / 3;
+      if (physics) this.handles.push(physics.addStatic(mesh, surface, { layer }));
+    }
     if (physics) physics.rebuildStatic();
 
     // --- lights ---
@@ -451,6 +491,7 @@ export class Assembler {
     this._protos.clear();
     this._static.clear();
     this._collide.clear();
+    this._collideLayered.clear();
   }
 }
 

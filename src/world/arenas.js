@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { paintMasks } from './util.js';
+import { LAYER } from '../physics/surfaces.js';
 
 /**
  * Arcade arenas — `?map=strike` and `?map=holdout`.
@@ -269,6 +270,48 @@ function ramp(x, z, width, dir, steps, mat, sign = 1, rise = 0.35, tread = 1.6) 
     else out.push([x, z + off, width, tread, h, 0, mat, 0]);
   }
   return out;
+}
+
+/**
+ * A ROOF. The reason rooms could not have one until now.
+ *
+ * The nav grid ray-casts DOWN from above and takes the first surface it meets,
+ * so an ordinary lid over a room makes the grid read "floor = the roof" and the
+ * interior stops existing as far as pathing is concerned — a stacked floor, the
+ * failure this whole map style was bent around avoiding.
+ *
+ * A roof emitted here goes on LAYER.SHOOT_ONLY instead of LAYER.STATIC, and the
+ * masks in physics/surfaces.js do the rest:
+ *   MASK.BULLET    includes SHOOT_ONLY -> it stops bullets, like a real roof
+ *   MASK.WORLD     does not            -> the nav grid never sees it
+ *   MASK.CHARACTER does not            -> nobody can stand on top of it
+ * So the room below stays walkable and the lid is still a lid.
+ *
+ * KNOWN LIMIT, because it is worth knowing rather than discovering: MASK.SIGHT
+ * does not include SHOOT_ONLY either, so an AI can technically see a target
+ * through a roof. Its shot still hits the roof. Bring SHOOT_ONLY into SIGHT if
+ * that ever reads badly in play.
+ */
+function roof(x, z, w, d, mat, y, t = 0.3, ry = 0) {
+  return [{ roof: true, x, z, w, d, t, ry, mat, y }];
+}
+
+/**
+ * A REAL SLOPE — a pitched slab, not a stack of treads.
+ *
+ * `buildArena` only ever emitted axis-aligned boxes because the row format has
+ * one rotation field and it is yaw. But the accumulator underneath takes a full
+ * MATRIX for both the visual and the collision copy, so a pitched ramp was
+ * always expressible; nothing had asked for it. Rises `rise` over `len` along
+ * `dir`, and the TOP FACE is the surface you walk, so `y` means the same thing
+ * it does everywhere else in this file: the height the ramp starts at.
+ *
+ * Keep the pitch gentle. The nav grid drops any cell whose floor normal is
+ * flatter than `maxSlope`, and the character controller has its own slopeLimit;
+ * about 1 in 5 is comfortable, 1 in 3 is the practical ceiling.
+ */
+function slope(x, z, w, len, rise, mat, y = 0, dir = 'z', t = 0.7) {
+  return [{ slope: true, x, z, w, len, rise, t, mat, y, dir }];
 }
 
 /**
@@ -730,6 +773,9 @@ const OUTPOST = [
   ...wall('z', -10, -14, 6, 3.5, [0], WALL_T, 'brick', 0),
   // internal divider: two rooms, one offset door, no through-shot
   ...wall('x', -4, -24, -10, 3.0, [-21], WALL_T, 'brick_fine', 0),
+  // Lid. Sits 0.1 above the 3.5 walls so the wall tops are still lit from
+  // outside and the interior reads as a room rather than a sealed box.
+  ...roof(-17, -4, 15, 21, 'corrugated', 3.6),
   [-21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', 0],
   [-12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', 0],
   [-18, 1, 1.4, 1.4, 0.7, 0.3, 'wood_prop', 0],
@@ -740,6 +786,7 @@ const OUTPOST = [
   ...wall('z', 10, -14, 6, 3.5, [-8, 2], WALL_T, 'brick', 0),
   ...wall('z', 24, -14, 6, 3.5, [-4], WALL_T, 'brick', 0),
   ...wall('x', -4, 10, 24, 3.0, [21], WALL_T, 'brick_fine', 0),
+  ...roof(17, -4, 15, 21, 'corrugated', 3.6),
   [21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', 0],
   [12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', 0],
   [18, -8, 1.4, 1.4, 0.7, -0.3, 'wood_prop', 0],
@@ -750,7 +797,13 @@ const OUTPOST = [
    * on the station house is looking straight at you.
    */
   [24, 25, 18, 14, 1.2, 0, 'concrete', 0],
-  ...steps(24, 13.2, 8, 'z', 3, 'concrete_dark', 1, 0, 0.4, 1.6),
+  /**
+   * A vehicle RAMP up the south face and a stair on the west. A loading dock
+   * has a ramp — and mixing the two means the two approaches feel different
+   * under the feet as well as on the map: the ramp is faster and completely
+   * open, the stair is shorter and tucked against mid.
+   */
+  ...slope(24, 11.2, 9, 6.8, 1.2, 'concrete_dark', 0, 'z'),
   ...steps(10.2, 25, 8, 'x', 3, 'concrete_dark', 1, 0, 0.4, 1.6),
   // dock edge and its hazard stripe
   [24, 18.2, 18, 0.4, 0.25, 0, 'concrete_dark', 1.2],
@@ -793,10 +846,19 @@ const OUTPOST = [
    */
   [0, 27, 26, 12, 2.4, 0, 'concrete', 0],
   ...steps(0, 12.2, 10, 'z', 6, 'concrete_dark', 1, 0, 0.4, 1.6),
+  /**
+   * SIDE ROUTE onto the station house, up its west flank out of the alley.
+   * The grand stair is the obvious way and everyone watches it; this is long,
+   * narrow and comes up behind whoever is doing the watching. A high position
+   * with exactly one approach is a position nobody can be dislodged from.
+   */
+  ...slope(-12.5, 9, 4.5, 12, 2.4, 'concrete_dark', 0, 'z'),
+  ...wall('z', -14.8, 9, 21, 1.1, [], 0.3, 'plaster_sand', 0.6),
   ...wall('x', 24, -9, 9, 3.0, [0], WALL_T, 'brick', 2.4),
   ...wall('x', 31, -9, 9, 3.0, [], WALL_T, 'brick', 2.4),
   ...wall('z', -9, 24, 31, 3.0, [27], WALL_T, 'brick', 2.4),
   ...wall('z', 9, 24, 31, 3.0, [27], WALL_T, 'brick', 2.4),
+  ...roof(0, 27.5, 19, 8, 'corrugated', 5.5),
   // parapet along the south lip: waist high up here, 3.6 m from mid
   ...wall('x', 21.2, -13, 13, 1.0, [0], 0.4, 'plaster_sand', 2.4),
   [-11, 23, 2.2, 1.1, 1.0, 0, 'wood_prop', 2.4],
@@ -1017,10 +1079,69 @@ export function buildArena(A, id) {
    * only way stacking onto a plinth stays legible.
    */
   const unit = flat(new THREE.BoxGeometry(1, 1, 1));
-  for (const [x, z, w, d, h, ry, mat, y] of spec.walls) {
+  /**
+   * Coplanar faces shimmer. Trim laid exactly on top of a wall, or a stripe at
+   * exactly the height of the slab under it, puts two surfaces on the same
+   * plane and the depth buffer picks per-pixel — which is the "bad edges
+   * between boxes" you see as a crawling seam along every joint. Every box is
+   * grown by this much, so touching boxes INTERPENETRATE by a hair instead of
+   * sharing a plane. It is far below the smallest real dimension here (0.1 m),
+   * so nothing moves that a player could measure.
+   */
+  const SEAM = 0.006;
+
+  const _m = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+  const _p = new THREE.Vector3();
+  const _s = new THREE.Vector3();
+
+  for (const row of spec.walls) {
+    /* ---- pitched slope, and roofs: object rows, see slope()/roof() -------- */
+    if (!Array.isArray(row)) {
+      const m = row.mat ?? 'plaster_white';
+      if (row.slope) {
+        const { x, z, w, len, rise, t, y, dir } = row;
+        const run = Math.hypot(len, rise);
+        const pitch = Math.atan2(rise, len);
+        // The TOP face is the walking surface, so the slab centre drops half a
+        // thickness along its own normal rather than half a thickness in Y.
+        const nx = dir === 'x' ? -Math.sin(pitch) : 0;
+        const nz = dir === 'z' ? -Math.sin(pitch) : 0;
+        const ny = Math.cos(pitch);
+        const cx = x + (dir === 'x' ? len / 2 : 0) - (t / 2) * nx;
+        const cz = z + (dir === 'z' ? len / 2 : 0) - (t / 2) * nz;
+        const cy = y + rise / 2 - (t / 2) * ny;
+        // Pitch about the axis ACROSS the run: a z-ramp tips about X.
+        _e.set(dir === 'z' ? -pitch : 0, 0, dir === 'x' ? pitch : 0, 'XYZ');
+        _q.setFromEuler(_e);
+        _p.set(cx, cy, cz);
+        _s.set(dir === 'x' ? run : w, t, dir === 'z' ? run : w);
+        _m.compose(_p, _q, _s);
+        A.add(m, unit, _m);
+        A.collideGeo(m, unit, _m);
+        continue;
+      }
+      if (row.roof) {
+        const { x, z, w, d, t, ry, y } = row;
+        const cy = y + t / 2;
+        A.addBox(m, unit, x, cy, z, ry, w, t, d);
+        // SHOOT_ONLY, not STATIC — see roof(). This is the whole trick.
+        _e.set(0, ry, 0, 'XYZ');
+        _q.setFromEuler(_e);
+        _p.set(x, cy, z);
+        _s.set(w, t, d);
+        _m.compose(_p, _q, _s);
+        A.collideGeoLayer(m, LAYER.SHOOT_ONLY, unit, _m);
+        continue;
+      }
+      continue;
+    }
+
+    const [x, z, w, d, h, ry, mat, y] = row;
     const m = mat ?? 'plaster_white';
     const cy = (y ?? 0) + h / 2;
-    A.addBox(m, unit, x, cy, z, ry, w, h, d);
+    A.addBox(m, unit, x, cy, z, ry, w + SEAM, h + SEAM, d + SEAM);
     A.box(m, x, cy, z, w, h, d, ry);
   }
   unit.dispose();

@@ -111,7 +111,26 @@ const stroke = (h, y) => {
   return top >= 2.4 ? '#f2f5f7' : top >= 1.5 ? '#9fd0e6' : top >= 0.9 ? '#ffb26b' : top >= 0.4 ? '#ffe27a' : '#7c8b99';
 };
 o.push('<g fill="none" stroke-width="1.2">');
-for (const [x, z, w, dd, h, ry, , y] of d.rows) {
+for (const row of d.rows) {
+  // Object rows are slopes and roofs (see arenas.js). They are drawn
+  // differently on purpose: a roof is the one thing on the plan that is NOT
+  // underfoot, and a slope needs to be told apart from a flat pad at a glance.
+  if (!Array.isArray(row)) {
+    if (row.slope) {
+      const w = row.dir === 'x' ? row.len : row.w;
+      const dd = row.dir === 'x' ? row.w : row.len;
+      const cx = sx(row.x + (row.dir === 'x' ? row.len / 2 : 0));
+      const cy = sy(row.z + (row.dir === 'z' ? row.len / 2 : 0));
+      o.push(`<rect x="${(cx - w * S / 2).toFixed(1)}" y="${(cy - dd * S / 2).toFixed(1)}" width="${(w * S).toFixed(1)}" height="${(dd * S).toFixed(1)}" stroke="#c07be0" stroke-dasharray="5 3"/>`);
+      o.push(`<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" font-size="9" fill="#c07be0" text-anchor="middle">ramp ${row.rise}m</text>`);
+    } else if (row.roof) {
+      const cx = sx(row.x), cy = sy(row.z);
+      o.push(`<rect x="${(cx - row.w * S / 2).toFixed(1)}" y="${(cy - row.d * S / 2).toFixed(1)}" width="${(row.w * S).toFixed(1)}" height="${(row.d * S).toFixed(1)}" stroke="#7de0c0" stroke-dasharray="2 4" opacity="0.85"/>`);
+      o.push(`<text x="${cx.toFixed(1)}" y="${(cy - row.d * S / 2 + 11).toFixed(1)}" font-size="9" fill="#7de0c0" text-anchor="middle">roof ${row.y}m</text>`);
+    }
+    continue;
+  }
+  const [x, z, w, dd, h, ry, , y] = row;
   const cx = sx(x), cy = sy(z);
   const rot = ry ? ` transform="rotate(${(-ry * 180 / Math.PI).toFixed(2)} ${cx.toFixed(1)} ${cy.toFixed(1)})"` : '';
   o.push(`<rect x="${(cx - w * S / 2).toFixed(1)}" y="${(cy - dd * S / 2).toFixed(1)}" width="${(w * S).toFixed(1)}" height="${(dd * S).toFixed(1)}"${rot} stroke="${stroke(h, y)}" opacity="${(h + (y || 0)) < 0.4 ? 0.45 : 0.95}"/>`);
