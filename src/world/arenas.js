@@ -310,8 +310,8 @@ function roof(x, z, w, d, mat, y, t = 0.3, ry = 0) {
  * flatter than `maxSlope`, and the character controller has its own slopeLimit;
  * about 1 in 5 is comfortable, 1 in 3 is the practical ceiling.
  */
-function slope(x, z, w, len, rise, mat, y = 0, dir = 'z', t = 0.7) {
-  return [{ slope: true, x, z, w, len, rise, t, mat, y, dir }];
+function slope(x, z, w, len, rise, mat, y = 0, dir = 'z', sign = 1, t = 0.7) {
+  return [{ slope: true, x, z, w, len, rise, t, mat, y, dir, sign }];
 }
 
 /**
@@ -715,230 +715,214 @@ const ZONE_SPAWNS = [
 ];
 
 /* ────────────────────────────────────────────────────────────────────────── *
- *  OUTPOST — a walled desert border post. Sand, brick and dust.
+ *  OUTPOST — a walled desert border post cut into SIX TERRACES.
  *
- *  The third location, and the point of it is CONTRAST. Miami is a neon rooftop
- *  of open platforms; this is a walled compound at ground level that you fight
- *  through BUILDINGS rather than across terraces. Different silhouette, different
- *  palette, different kind of fight — a map list is only worth having if the
- *  entries do not play the same.
+ *  The first version of this was one flat plane with two pads bolted onto it,
+ *  which is the thing a "map" is not. The compound now has a GRADE: six
+ *  plateaus at six heights, joined by ramps, and the whole fight runs uphill
+ *  from the gate to the station.
+ *
+ *      3.2  STATION HOUSE   north centre, the high ground
+ *      2.4  B COURT         walled yard, north-west
+ *      2.0  A DOCK          loading platform, north-east
+ *      1.6  WEST TERRACE    west house + west alley
+ *      0.8  MID + EAST TERRACE   well street, east house, east alley
+ *      0.0  DEPOT YARD      the gate you start at, and the lowest ground
+ *
+ *  WEST IS HIGHER THAN EAST, on purpose. A compound that steps evenly on both
+ *  sides is a compound with one fight mirrored twice: here the west route hands
+ *  you height early and the east route is faster but sits under everything, so
+ *  which side you take is a real question rather than a coin toss.
  *
  *      z=+33  ┌──────────────┬─────────────────┬──────────────┐
- *             │   B COURT    │  STATION HOUSE  │   A DOCK     │
- *             │  (enclosed)  │      2.4        │    1.2       │
- *      z=+18  ├────┬─────────┴────┬───────┬────┴──────┬───────┤
- *             │ W  │   WEST HOUSE │  MID  │ EAST HOUSE│  E    │
- *             │ A  │   (4 doors)  │       │ (4 doors) │  A    │
- *             │ L  ├──────────────┤ well  ├───────────┤  L    │
- *      z=-14  │ L  │              │       │           │  L    │
- *             │ E  │              │       │           │  E    │
- *      z=-20  ├────┴──────────────┴───────┴───────────┴───────┤
- *             │            DEPOT YARD  (spawn)                │
+ *             │  B COURT 2.4 │  STATION 3.2    │  A DOCK 2.0  │
+ *      z=+16  ├──────────────┴──┬───────┬──────┴──────────────┤
+ *             │  WEST TERRACE   │  MID  │   EAST TERRACE      │
+ *             │      1.6        │  0.8  │       0.8           │
+ *             │   [west house]  │ well  │   [east house]      │
+ *      z=-20  ├─────────────────┴───────┴─────────────────────┤
+ *             │            DEPOT YARD  0.0  (spawn)           │
  *      z=-33  └───────────────────────────────────────────────┘
  *
- *  THE TWO SITES ARE OPPOSITES, on purpose, so calling one is worth doing:
- *    A DOCK   a raised loading platform, open, two stairs, no roof. You hold it
- *             from height and you are visible from everywhere while you do.
- *    B COURT  a walled yard at ground level, two doors, no sightline in or out.
- *             You hold it from cover and never see what is coming.
+ *  Nine ramps, no stairs anywhere: every change of level on this map is a slope
+ *  you can run up without touching a key, which is what makes the grade read as
+ *  terrain rather than as furniture. MID and EAST TERRACE are deliberately the
+ *  SAME height and therefore one continuous surface — a terrace boundary that
+ *  is not a step is what stops six levels turning into six rooms.
  *
- *  Same engine limit as MIAMI: the nav grid is a single 2-D height field, so
- *  nothing walkable sits above anything walkable. The awnings are 0.3 m strips
- *  for exactly that reason — a solid roof over a courtyard would make the nav
- *  grid think the courtyard's floor was the roof.
+ *  Same engine limit as everywhere: the nav grid is one height field, nothing
+ *  walkable sits above anything walkable, and the roofs are on LAYER.SHOOT_ONLY
+ *  so the rooms under them stay walkable.
  * ────────────────────────────────────────────────────────────────────────── */
+
+/** The six terrace heights, named once so nothing drifts out of step. */
+const OP = { yard: 0, mid: 0.8, east: 0.8, west: 1.6, dock: 2.0, court: 2.4, house: 3.2 };
+
 const OUTPOST = [
   /* ══ COMPOUND WALL ════════════════════════════════════════════════════════
-   * 4 m and solid: this is a walled post, not a rooftop, so the boundary reads
-   * as something built rather than as the edge of the world.
+   * 5.5 from the yard floor, so it still stands above the station house at 3.2.
    */
-  ...wall('x', -33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
-  ...wall('x', 33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
-  ...wall('z', -33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
-  ...wall('z', 33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
-  // Coping course in brick — one band of a second material stops 4 m of flat
-  // sand from reading as a texture-mapped box.
-  [0, -33, 66, 0.9, 0.35, 0, 'brick', 4.0],
-  [0, 33, 66, 0.9, 0.35, 0, 'brick', 4.0],
-  [-33, 0, 0.9, 66, 0.35, 0, 'brick', 4.0],
-  [33, 0, 0.9, 66, 0.35, 0, 'brick', 4.0],
+  ...wall('x', -33, -33, 33, 5.5, [], 0.7, 'plaster_sand', 0),
+  ...wall('x', 33, -33, 33, 5.5, [], 0.7, 'plaster_sand', 0),
+  ...wall('z', -33, -33, 33, 5.5, [], 0.7, 'plaster_sand', 0),
+  ...wall('z', 33, -33, 33, 5.5, [], 0.7, 'plaster_sand', 0),
+  [0, -33, 66, 0.9, 0.35, 0, 'brick', 5.5],
+  [0, 33, 66, 0.9, 0.35, 0, 'brick', 5.5],
+  [-33, 0, 0.9, 66, 0.35, 0, 'brick', 5.5],
+  [33, 0, 0.9, 66, 0.35, 0, 'brick', 5.5],
 
-  /* ══ WEST HOUSE ═══════════════════════════════════════════════════════════
+  /* ══ THE TERRACES ═════════════════════════════════════════════════════════
+   * Six slabs. Everything else in this file sits ON one of them, which is why
+   * OP exists — a prop written at the wrong base is a prop buried in a hill.
+   */
+  [-21, -2, 24, 36, OP.west, 0, 'road_rut', 0],   // WEST TERRACE  x -33..-9
+  [21, -2, 24, 36, OP.east, 0, 'road_rut', 0],    // EAST TERRACE  x  9..33
+  [0, 0, 18, 40, OP.mid, 0, 'road_rut', 0],       // MID           x -9..9, z -20..20
+  [-22, 24.5, 22, 17, OP.court, 0, 'concrete', 0], // B COURT      x -33..-11
+  [22, 24.5, 22, 17, OP.dock, 0, 'concrete', 0],   // A DOCK       x  11..33
+  [0, 26.5, 22, 13, OP.house, 0, 'concrete', 0],   // STATION      x -11..11, z 20..33
+
+  /* ══ THE RAMPS ════════════════════════════════════════════════════════════
+   * Nine of them and not one step. Each is written low-end-first: the slab
+   * starts at (x, z) at height `y` and climbs `rise` over `len` in `sign`.
+   */
+  /**
+   * Out of the gate: three ways up, arriving at three different heights.
+   *
+   * A RAMP MUST REACH FULL HEIGHT EXACTLY AT THE PLATEAU EDGE. Written as
+   * "start at the gate and climb", these ran from z -22 to -16 while the
+   * terraces begin at z -20 — so the last 4 m of every ramp was buried under
+   * the terrace it was climbing, and at the boundary the ramp had only reached
+   * 0.27 against a 0.8 face. A 0.53 m lip is past the nav step height, so the
+   * spawn yard was cut off from the entire rest of the map while every other
+   * pair of terraces still connected. Each flight now ENDS on z = -20.
+   */
+  ...slope(0, -26, 9, 6, OP.mid, 'road_dust', OP.yard, 'z', 1),
+  ...slope(-20, -28, 8, 8, OP.west, 'road_dust', OP.yard, 'z', 1),
+  ...slope(20, -26, 8, 6, OP.east, 'road_dust', OP.yard, 'z', 1),
+  // mid <-> west terrace, the step across the grade. Two of them, far apart,
+  // so crossing the map sideways is not a single pinch.
+  ...slope(-5, -10, 5, 4, OP.west - OP.mid, 'road_dust', OP.mid, 'x', -1),
+  ...slope(-5, 10, 5, 4, OP.west - OP.mid, 'road_dust', OP.mid, 'x', -1),
+  // the grand ramp: mid all the way to the station house
+  ...slope(0, 10, 11, 10, OP.house - OP.mid, 'concrete_dark', OP.mid, 'z', 1),
+  // west terrace -> B court, east terrace -> A dock
+  ...slope(-22, 12, 9, 4, OP.court - OP.west, 'concrete_dark', OP.west, 'z', 1),
+  ...slope(22, 10, 9, 6, OP.dock - OP.east, 'concrete_dark', OP.east, 'z', 1),
+  // A dock -> station, the only high-to-high link, and it is on the east side
+  // so B court always costs a rotation down through mid.
+  // Low end on the dock at x 15, climbing west to land flush on the station's
+  // edge at x 11 — same rule as the gate ramps, in the other axis.
+  ...slope(15, 26, 6, 4, OP.house - OP.dock, 'concrete_dark', OP.dock, 'x', -1),
+
+  /* ══ WEST HOUSE — on the west terrace, 1.6 ════════════════════════════════
    * Four doors, no two on the same axis, so it is a junction you can be flanked
    * inside rather than a corridor with a door at each end.
    */
-  ...wall('x', -14, -24, -10, 3.5, [-17], WALL_T, 'plaster_sand', 0),
-  ...wall('x', 6, -24, -10, 3.5, [-20, -13], WALL_T, 'plaster_sand', 0),
-  ...wall('z', -24, -14, 6, 3.5, [-4], WALL_T, 'brick', 0),
-  ...wall('z', -10, -14, 6, 3.5, [0], WALL_T, 'brick', 0),
-  // internal divider: two rooms, one offset door, no through-shot
-  ...wall('x', -4, -24, -10, 3.0, [-21], WALL_T, 'brick_fine', 0),
-  // Lid. Sits 0.1 above the 3.5 walls so the wall tops are still lit from
-  // outside and the interior reads as a room rather than a sealed box.
-  ...roof(-17, -4, 15, 21, 'corrugated', 3.6),
-  [-21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', 0],
-  [-12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', 0],
-  [-18, 1, 1.4, 1.4, 0.7, 0.3, 'wood_prop', 0],
+  ...wall('x', -14, -24, -10, 3.5, [-17], WALL_T, 'plaster_sand', OP.west),
+  ...wall('x', 6, -24, -10, 3.5, [-20, -13], WALL_T, 'plaster_sand', OP.west),
+  ...wall('z', -24, -14, 6, 3.5, [-4], WALL_T, 'brick', OP.west),
+  ...wall('z', -10, -14, 6, 3.5, [0], WALL_T, 'brick', OP.west),
+  ...wall('x', -4, -24, -10, 3.0, [-21], WALL_T, 'brick_fine', OP.west),
+  ...roof(-17, -4, 15, 21, 'corrugated', OP.west + 3.6),
+  [-21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', OP.west],
+  [-12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', OP.west],
+  [-18, 1, 1.4, 1.4, 0.7, 0.3, 'wood_prop', OP.west],
 
-  /* ══ EAST HOUSE ═══════════════════════════════════════════════════════════ */
-  ...wall('x', -14, 10, 24, 3.5, [20], WALL_T, 'plaster_sand', 0),
-  ...wall('x', 6, 10, 24, 3.5, [13], WALL_T, 'plaster_sand', 0),
-  ...wall('z', 10, -14, 6, 3.5, [-8, 2], WALL_T, 'brick', 0),
-  ...wall('z', 24, -14, 6, 3.5, [-4], WALL_T, 'brick', 0),
-  ...wall('x', -4, 10, 24, 3.0, [21], WALL_T, 'brick_fine', 0),
-  ...roof(17, -4, 15, 21, 'corrugated', 3.6),
-  [21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', 0],
-  [12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', 0],
-  [18, -8, 1.4, 1.4, 0.7, -0.3, 'wood_prop', 0],
+  /* ══ EAST HOUSE — on the east terrace, 0.8 ════════════════════════════════ */
+  ...wall('x', -14, 10, 24, 3.5, [20], WALL_T, 'plaster_sand', OP.east),
+  ...wall('x', 6, 10, 24, 3.5, [13], WALL_T, 'plaster_sand', OP.east),
+  ...wall('z', 10, -14, 6, 3.5, [-8, 2], WALL_T, 'brick', OP.east),
+  ...wall('z', 24, -14, 6, 3.5, [-4], WALL_T, 'brick', OP.east),
+  ...wall('x', -4, 10, 24, 3.0, [21], WALL_T, 'brick_fine', OP.east),
+  ...roof(17, -4, 15, 21, 'corrugated', OP.east + 3.6),
+  [21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', OP.east],
+  [12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', OP.east],
+  [18, -8, 1.4, 1.4, 0.7, -0.3, 'wood_prop', OP.east],
 
-  /* ══ A DOCK — the raised site, north-east ═════════════════════════════════
-   * A concrete loading platform 1.2 up with two stairs and no roof. Height and
-   * exposure in the same package: you shoot down into the approach and anyone
-   * on the station house is looking straight at you.
-   */
-  [24, 25, 18, 14, 1.2, 0, 'concrete', 0],
-  /**
-   * A vehicle RAMP up the south face and a stair on the west. A loading dock
-   * has a ramp — and mixing the two means the two approaches feel different
-   * under the feet as well as on the map: the ramp is faster and completely
-   * open, the stair is shorter and tucked against mid.
-   */
-  ...slope(24, 11.2, 9, 6.8, 1.2, 'concrete_dark', 0, 'z'),
-  ...steps(10.2, 25, 8, 'x', 3, 'concrete_dark', 1, 0, 0.4, 1.6),
-  // dock edge and its hazard stripe
-  [24, 18.2, 18, 0.4, 0.25, 0, 'concrete_dark', 1.2],
-  [24, 18.0, 18, 0.22, 0.1, 0, 'emissive_warm', 1.2],
-  // cargo on the dock: cover, and the 0.7s are climbable onto the 1.4s
-  [19, 23, 2.4, 2.4, 1.0, 0, 'wood_prop', 1.2],
-  [30, 22, 2.4, 2.4, 0.7, 0.2, 'wood_prop', 1.2],
-  [30, 24.4, 2.4, 2.4, 1.4, 0.2, 'wood_prop', 1.2],
-  [22, 30, 4.4, 1.2, 1.0, 0, 'metal_rust', 1.2],
-  // a corrugated canopy on posts — beams only, never a slab
-  [17, 27, 0.35, 0.35, 2.6, 0, 'metal_rust', 1.2],
-  [31, 27, 0.35, 0.35, 2.6, 0, 'metal_rust', 1.2],
-  [24, 27, 15, 0.3, 0.25, 0, 'corrugated', 3.8],
-  [24, 29.4, 15, 0.3, 0.25, 0, 'corrugated', 3.8],
+  /* ══ A DOCK — 2.0, open ═══════════════════════════════════════════════════ */
+  [22, 16.4, 22, 0.4, 0.25, 0, 'concrete_dark', OP.dock],
+  [22, 16.2, 22, 0.22, 0.1, 0, 'emissive_warm', OP.dock],
+  [17, 22, 2.4, 2.4, 1.0, 0, 'wood_prop', OP.dock],
+  [30, 21, 2.4, 2.4, 0.7, 0.2, 'wood_prop', OP.dock],
+  [30, 23.4, 2.4, 2.4, 1.4, 0.2, 'wood_prop', OP.dock],
+  [20, 30, 4.4, 1.2, 1.0, 0, 'metal_rust', OP.dock],
+  [16, 27, 0.35, 0.35, 2.6, 0, 'metal_rust', OP.dock],
+  [30, 27, 0.35, 0.35, 2.6, 0, 'metal_rust', OP.dock],
+  ...roof(23, 27, 15, 7, 'corrugated', OP.dock + 2.6),
 
-  /* ══ B COURT — the enclosed site, north-west ══════════════════════════════
-   * Ground level, walled on every side, two doors and no line of sight out. The
-   * exact inverse of A: you cannot be shot from the station house in here, and
-   * you cannot see it coming either.
-   */
-  ...wall('x', 18, -33, -13, 3.5, [-28, -19], WALL_T, 'plaster_sand', 0),
-  ...wall('z', -13, 18, 33, 3.5, [26], WALL_T, 'plaster_sand', 0),
-  // a low inner wall, so the yard is two pockets rather than one box
-  [-23, 25, 8, 0.5, 1.1, 0, 'brick', 0],
-  [-29, 21, 2.2, 2.2, 1.0, 0.2, 'wood_prop', 0],
-  [-17, 30, 2.4, 1.2, 1.0, 0, 'wood_prop', 0],
-  [-26, 30, 1.6, 1.6, 0.7, -0.3, 'wood_prop', 0],
-  // well head in the corner, and a palm — the only green on the map
-  [-30, 31, 2.2, 2.2, 0.9, 0, 'brick_fine', 0],
-  [-20.5, 21, 1.6, 1.6, 0.55, 0, 'brick', 0],
-  [-20.5, 21, 1.3, 1.3, 2.6, 0, 'foliage', 0.55],
-  // red awnings over the doors: 0.3 m strips, deliberately not roofs
-  [-28, 17.4, 3.4, 0.3, 0.25, 0, 'fabric_red', 2.8],
-  [-19, 17.4, 3.4, 0.3, 0.25, 0, 'fabric_red', 2.8],
+  /* ══ B COURT — 2.4, enclosed ══════════════════════════════════════════════ */
+  ...wall('x', 16, -33, -11, 3.5, [-28, -19], WALL_T, 'plaster_sand', OP.court),
+  ...wall('z', -11, 16, 33, 3.5, [26], WALL_T, 'plaster_sand', OP.court),
+  [-23, 23, 8, 0.5, 1.1, 0, 'brick', OP.court],
+  [-29, 20, 2.2, 2.2, 1.0, 0.2, 'wood_prop', OP.court],
+  [-17, 29, 2.4, 1.2, 1.0, 0, 'wood_prop', OP.court],
+  [-26, 29, 1.6, 1.6, 0.7, -0.3, 'wood_prop', OP.court],
+  [-30, 31, 2.2, 2.2, 0.9, 0, 'brick_fine', OP.court],
+  [-20.5, 20, 1.6, 1.6, 0.55, 0, 'brick', OP.court],
+  [-20.5, 20, 1.3, 1.3, 2.6, 0, 'foliage', OP.court + 0.55],
+  [-28, 15.4, 3.4, 0.3, 0.25, 0, 'fabric_red', OP.court + 2.8],
+  [-19, 15.4, 3.4, 0.3, 0.25, 0, 'fabric_red', OP.court + 2.8],
 
-  /* ══ STATION HOUSE — the high ground, north centre ════════════════════════
-   * 2.4 up a six-tread flight straight out of mid, with a brick hut on top that
-   * has a door on three sides. It overlooks A completely and B not at all,
-   * which is the whole reason to take one site over the other.
-   */
-  [0, 27, 26, 12, 2.4, 0, 'concrete', 0],
-  ...steps(0, 12.2, 10, 'z', 6, 'concrete_dark', 1, 0, 0.4, 1.6),
-  /**
-   * SIDE ROUTE onto the station house, up its west flank out of the alley.
-   * The grand stair is the obvious way and everyone watches it; this is long,
-   * narrow and comes up behind whoever is doing the watching. A high position
-   * with exactly one approach is a position nobody can be dislodged from.
-   */
-  ...slope(-12.5, 9, 4.5, 12, 2.4, 'concrete_dark', 0, 'z'),
-  ...wall('z', -14.8, 9, 21, 1.1, [], 0.3, 'plaster_sand', 0.6),
-  ...wall('x', 24, -9, 9, 3.0, [0], WALL_T, 'brick', 2.4),
-  ...wall('x', 31, -9, 9, 3.0, [], WALL_T, 'brick', 2.4),
-  ...wall('z', -9, 24, 31, 3.0, [27], WALL_T, 'brick', 2.4),
-  ...wall('z', 9, 24, 31, 3.0, [27], WALL_T, 'brick', 2.4),
-  ...roof(0, 27.5, 19, 8, 'corrugated', 5.5),
-  // parapet along the south lip: waist high up here, 3.6 m from mid
-  ...wall('x', 21.2, -13, 13, 1.0, [0], 0.4, 'plaster_sand', 2.4),
-  [-11, 23, 2.2, 1.1, 1.0, 0, 'wood_prop', 2.4],
-  [11, 23, 2.2, 1.1, 1.0, 0, 'wood_prop', 2.4],
-  /**
-   * ONE STAIR, ON PURPOSE — and the two flank flights that used to be here were
-   * wrong twice over. `steps()` always RISES along `sign`, so writing them as
-   * "descending off the house" built them upside down: the 0.4 tread landed
-   * against the 2.4 platform and the 2.4 tread sat out in the open, which is a
-   * wall with a step in front of it. The east one also ran straight through
-   * A dock's footprint.
-   *
-   * They are gone rather than fixed. The house is reached from mid, A dock from
-   * its own two stairs, B court from the alley — all of them via the ground, so
-   * holding the high ground means giving it up to rotate. A direct house-to-dock
-   * link would make the strongest position on the map also the best connected.
-   */
+  /* ══ STATION HOUSE — 3.2, the high ground ═════════════════════════════════ */
+  ...wall('x', 24, -9, 9, 3.0, [0], WALL_T, 'brick', OP.house),
+  ...wall('x', 31, -9, 9, 3.0, [], WALL_T, 'brick', OP.house),
+  ...wall('z', -9, 24, 31, 3.0, [27], WALL_T, 'brick', OP.house),
+  ...wall('z', 9, 24, 31, 3.0, [27], WALL_T, 'brick', OP.house),
+  ...roof(0, 27.5, 19, 8, 'corrugated', OP.house + 3.1),
+  // parapet on the south lip: waist high up here, a 3.2 m face from mid
+  ...wall('x', 20.4, -11, 11, 1.0, [0], 0.4, 'plaster_sand', OP.house),
+  [-6, 22.6, 2.2, 1.1, 1.0, 0, 'wood_prop', OP.house],
+  [6, 22.6, 2.2, 1.1, 1.0, 0, 'wood_prop', OP.house],
 
-  /* ══ MID — the well street ════════════════════════════════════════════════
-   * The fast way to the station stair and the only place both houses overlook.
-   * The well is hard cover you can circle; everything else is waist high.
-   */
-  /**
-   * The well sits OFF the map's centre deliberately. At (0,-2) its 1.32 m head
-   * covered world (0,0), which is the point tools/nav-check.mjs paths its whole
-   * sample ring to — the target was the top of an unclimbable pillar, so 8 of 16
-   * bearings reported "no path" on a map that is fully connected. The check is
-   * worth more than the centimetres.
-   */
-  [-4, 2, 3.6, 3.6, 1.1, 0, 'brick_fine', 0],
-  [-4, 2, 4.0, 4.0, 0.22, 0, 'brick', 1.1],
-  [-6, 8, 2.4, 1.2, 1.0, 0, 'wood_prop', 0],
-  [6, 8, 1.2, 2.4, 1.0, 0, 'wood_prop', 0],
-  [4, -10, 2.2, 2.2, 0.7, 0.25, 'wood_prop', 0],
-  [4, -12.4, 2.2, 2.2, 1.4, 0.25, 'wood_prop', 0],
-  [-5, -8, 4.4, 1.1, 1.0, 0, 'concrete_prop', 0],
-  [0, 12, 6, 1.1, 0.7, 0, 'concrete_prop', 0],
+  /* ══ MID — the well street, 0.8 ═══════════════════════════════════════════ */
+  [-4, 2, 3.6, 3.6, 1.1, 0, 'brick_fine', OP.mid],
+  [-4, 2, 4.0, 4.0, 0.22, 0, 'brick', OP.mid + 1.1],
+  [-6, 8, 2.4, 1.2, 1.0, 0, 'wood_prop', OP.mid],
+  [6, 8, 1.2, 2.4, 1.0, 0, 'wood_prop', OP.mid],
+  [4, -10, 2.2, 2.2, 0.7, 0.25, 'wood_prop', OP.mid],
+  [4, -12.4, 2.2, 2.2, 1.4, 0.25, 'wood_prop', OP.mid],
+  [-5, -8, 4.4, 1.1, 1.0, 0, 'concrete_prop', OP.mid],
 
-  /* ══ ALLEYS — west and east ═══════════════════════════════════════════════
-   * 9 m between the compound wall and a house, running the length of the map.
-   * Long, blind at both ends, and the only route that never crosses mid.
+  /* ══ ALLEYS ═══════════════════════════════════════════════════════════════
+   * West alley rides the west terrace at 1.6, east alley the east at 0.8, so
+   * the two flanks of the compound are not the same walk.
    */
-  [-28, -6, 1.2, 4.4, 1.0, 0, 'concrete_prop', 0],
-  [-29, 6, 2.2, 2.2, 0.7, 0.3, 'wood_prop', 0],
-  [-27, 12, 2.4, 1.2, 1.0, 0, 'metal_rust', 0],
-  [28, -6, 1.2, 4.4, 1.0, 0, 'concrete_prop', 0],
-  [29, 6, 2.2, 2.2, 0.7, -0.3, 'wood_prop', 0],
-  [27, 12, 2.4, 1.2, 1.0, 0, 'metal_rust', 0],
+  [-28, -6, 1.2, 4.4, 1.0, 0, 'concrete_prop', OP.west],
+  [-29, 6, 2.2, 2.2, 0.7, 0.3, 'wood_prop', OP.west],
+  [-27, 12, 2.4, 1.2, 1.0, 0, 'metal_rust', OP.west],
+  [28, -6, 1.2, 4.4, 1.0, 0, 'concrete_prop', OP.east],
+  [29, 6, 2.2, 2.2, 0.7, -0.3, 'wood_prop', OP.east],
+  [27, 12, 2.4, 1.2, 1.0, 0, 'metal_rust', OP.east],
 
-  /* ══ DEPOT YARD — spawn ═══════════════════════════════════════════════════
-   * Deliberately thin cover: it is where you start and fall back to, and a yard
-   * you can hold forever is a yard you never leave.
-   */
-  [-16, -24, 2.4, 2.4, 1.0, 0.15, 'wood_prop', 0],
-  [16, -24, 2.4, 2.4, 1.0, -0.15, 'wood_prop', 0],
-  [0, -28, 6, 1.2, 0.7, 0, 'concrete_prop', 0],
-  [-26, -29, 3.2, 1.2, 1.0, 0, 'metal_rust', 0],
-  [26, -29, 3.2, 1.2, 1.0, 0, 'metal_rust', 0],
-  // lane mouths, so the three routes north are legible from spawn
-  [-28, -19.6, 10, 0.3, 0.12, 0, 'emissive_warm', 0],
-  [0, -19.6, 14, 0.3, 0.12, 0, 'lamp_lens', 0],
-  [28, -19.6, 10, 0.3, 0.12, 0, 'emissive_warm', 0],
+  /* ══ DEPOT YARD — 0.0, spawn ══════════════════════════════════════════════ */
+  [-16, -26, 2.4, 2.4, 1.0, 0.15, 'wood_prop', OP.yard],
+  [16, -26, 2.4, 2.4, 1.0, -0.15, 'wood_prop', OP.yard],
+  [0, -29, 6, 1.2, 0.7, 0, 'concrete_prop', OP.yard],
+  [-26, -30, 3.2, 1.2, 1.0, 0, 'metal_rust', OP.yard],
+  [26, -30, 3.2, 1.2, 1.0, 0, 'metal_rust', OP.yard],
+  // ramp mouths, so the three ways up are legible from the gate
+  [-20, -23.4, 8, 0.3, 0.12, 0, 'emissive_warm', OP.yard],
+  [0, -22.4, 9, 0.3, 0.12, 0, 'lamp_lens', OP.yard],
+  [20, -22.4, 8, 0.3, 0.12, 0, 'emissive_warm', OP.yard],
 
   /* ══ LAMPS ════════════════════════════════════════════════════════════════ */
-  [-12, -6, 0.3, 0.3, 4.6, 0, 'metal_rust', 0],
-  [-12, -6, 0.8, 0.8, 0.28, 0, 'lamp_lens', 4.6],
-  [12, 10, 0.3, 0.3, 4.6, 0, 'metal_rust', 0],
-  [12, 10, 0.8, 0.8, 0.28, 0, 'lamp_lens', 4.6],
-  [0, 30, 0.3, 0.3, 3.4, 0, 'metal_rust', 2.4],
-  [0, 30, 0.8, 0.8, 0.28, 0, 'lamp_lens', 5.8],
+  [-12, -6, 0.3, 0.3, 4.6, 0, 'metal_rust', OP.west],
+  [-12, -6, 0.8, 0.8, 0.28, 0, 'lamp_lens', OP.west + 4.6],
+  [12, 10, 0.3, 0.3, 4.6, 0, 'metal_rust', OP.east],
+  [12, 10, 0.8, 0.8, 0.28, 0, 'lamp_lens', OP.east + 4.6],
+  [0, 30, 0.3, 0.3, 3.4, 0, 'metal_rust', OP.house],
+  [0, 30, 0.8, 0.8, 0.28, 0, 'lamp_lens', OP.house + 3.4],
 ];
 
-/** Every route and both sites, on open ground and never on a stair. */
+/** One per terrace, so a wave cannot arrive from a single elevation. */
 const OUTPOST_SPAWNS = [
-  [0, -27, 0, 'depot yard'],
-  [-29, -4, 0.5, 'west alley'],
-  [29, -4, -0.5, 'east alley'],
-  [0, 4, 0, 'well street'],
-  [-24, 28, Math.PI, 'b court'],
-  [24, 24, Math.PI, 'a dock'],
+  [0, -28, 0, 'depot yard'],
+  [-29, -2, 0.5, 'west alley'],
+  [29, -2, -0.5, 'east alley'],
+  [0, 6, 0, 'well street'],
+  [-24, 27, Math.PI, 'b court'],
+  [24, 22, Math.PI, 'a dock'],
 ];
 
 export const ARENAS = {
@@ -1102,18 +1086,22 @@ export function buildArena(A, id) {
       const m = row.mat ?? 'plaster_white';
       if (row.slope) {
         const { x, z, w, len, rise, t, y, dir } = row;
+        // `sign` is the direction the ramp CLIMBS. The low end is always at
+        // (x, z, y); with sign -1 the high end is at x-len, which is what a
+        // ramp up onto a plateau that lies in -x or -z needs.
+        const sg = row.sign ?? 1;
         const run = Math.hypot(len, rise);
         const pitch = Math.atan2(rise, len);
         // The TOP face is the walking surface, so the slab centre drops half a
         // thickness along its own normal rather than half a thickness in Y.
-        const nx = dir === 'x' ? -Math.sin(pitch) : 0;
-        const nz = dir === 'z' ? -Math.sin(pitch) : 0;
+        const nx = dir === 'x' ? -Math.sin(pitch) * sg : 0;
+        const nz = dir === 'z' ? -Math.sin(pitch) * sg : 0;
         const ny = Math.cos(pitch);
-        const cx = x + (dir === 'x' ? len / 2 : 0) - (t / 2) * nx;
-        const cz = z + (dir === 'z' ? len / 2 : 0) - (t / 2) * nz;
+        const cx = x + (dir === 'x' ? (sg * len) / 2 : 0) - (t / 2) * nx;
+        const cz = z + (dir === 'z' ? (sg * len) / 2 : 0) - (t / 2) * nz;
         const cy = y + rise / 2 - (t / 2) * ny;
         // Pitch about the axis ACROSS the run: a z-ramp tips about X.
-        _e.set(dir === 'z' ? -pitch : 0, 0, dir === 'x' ? pitch : 0, 'XYZ');
+        _e.set(dir === 'z' ? -pitch * sg : 0, 0, dir === 'x' ? pitch * sg : 0, 'XYZ');
         _q.setFromEuler(_e);
         _p.set(cx, cy, cz);
         _s.set(dir === 'x' ? run : w, t, dir === 'z' ? run : w);

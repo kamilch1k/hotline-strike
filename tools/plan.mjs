@@ -88,13 +88,13 @@ o.push(`<rect width="${PX}" height="${PY}" fill="#0d1117"/>`);
  */
 const byHeight = (h) =>
   h === null ? '#3a1d24'
-  : h < 0.2 ? '#16202c'   // canyon floor / spawn
-  : h < 0.55 ? '#1f3d52'  // first tread
-  : h < 0.95 ? '#2a6070'  // crate tops, vaultable
-  : h < 1.6 ? '#3f8f7d'   // the 1.4 wings
-  : h < 2.2 ? '#63a86b'   // mid-flight
-  : h < 3.2 ? '#9ec96a'   // the 2.8 CT deck
-  : '#e8d46a';            // 4.2 antenna deck
+  : h < 0.35 ? '#16202c'  // yard / canyon floor
+  : h < 1.2 ? '#1f4d63'   // 0.8 terrace
+  : h < 1.85 ? '#2f7d78'  // 1.6 terrace
+  : h < 2.25 ? '#3f9b6b'  // 2.0 dock
+  : h < 2.9 ? '#6cb85e'   // 2.4 court
+  : h < 3.6 ? '#a8cc5c'   // 3.2 station
+  : '#e8d46a';            // anything above
 
 const c = d.cell * S;
 o.push('<g shape-rendering="crispEdges">');
@@ -119,8 +119,9 @@ for (const row of d.rows) {
     if (row.slope) {
       const w = row.dir === 'x' ? row.len : row.w;
       const dd = row.dir === 'x' ? row.w : row.len;
-      const cx = sx(row.x + (row.dir === 'x' ? row.len / 2 : 0));
-      const cy = sy(row.z + (row.dir === 'z' ? row.len / 2 : 0));
+      const sg = row.sign ?? 1;
+      const cx = sx(row.x + (row.dir === 'x' ? (sg * row.len) / 2 : 0));
+      const cy = sy(row.z + (row.dir === 'z' ? (sg * row.len) / 2 : 0));
       o.push(`<rect x="${(cx - w * S / 2).toFixed(1)}" y="${(cy - dd * S / 2).toFixed(1)}" width="${(w * S).toFixed(1)}" height="${(dd * S).toFixed(1)}" stroke="#c07be0" stroke-dasharray="5 3"/>`);
       o.push(`<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" font-size="9" fill="#c07be0" text-anchor="middle">ramp ${row.rise}m</text>`);
     } else if (row.roof) {
@@ -157,10 +158,10 @@ for (let v = -Math.floor(W / 2 / 10) * 10; v <= W / 2; v += 10) {
 o.push('</g>');
 
 o.push(`<g font-size="10"><text x="${M}" y="20" font-size="13" fill="#e6edf3">${MAP.toUpperCase()} — floorplan over nav grid (north up, level space)</text>`);
-[['#5c1f2b', 'NOT walkable'], ['#16202c', 'floor 0'], ['#1f3d52', '0.35'], ['#2a6070', '0.7'],
- ['#3f8f7d', '1.4 wings'], ['#9ec96a', '2.8 CT deck'], ['#e8d46a', '4.2 antenna']]
+[['#5c1f2b', 'NOT walkable'], ['#16202c', '0 yard'], ['#1f4d63', '0.8'], ['#2f7d78', '1.6'],
+ ['#3f9b6b', '2.0'], ['#6cb85e', '2.4'], ['#a8cc5c', '3.2'], ['#e8d46a', 'higher']]
   .forEach(([col, label], i) => {
-    const lx = M + i * 112;
+    const lx = M + i * 98;
     o.push(`<rect x="${lx}" y="26" width="10" height="10" fill="${col}"/><text x="${lx + 14}" y="34" fill="#8b98a5">${label}</text>`);
   });
 o.push('</g></svg>');
