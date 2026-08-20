@@ -207,6 +207,29 @@ export const CAMERA = {
     sprintScale: 1.7,
   },
 
+  /**
+   * STEP SMOOTHING — the camera's answer to a capsule that climbs in jumps.
+   *
+   * The character controller resolves a stair by lifting the capsule, moving it
+   * forward and dropping it (physics/character.js), so height arrives in one
+   * frame: measured on a 0.35 m tread, the capsule gains 0.212 m between two
+   * frames and the eye went with it, because nothing here decoupled them. That
+   * single-frame jolt every tread IS the "stutter on stairs" — it costs no CPU
+   * at all, which is why the frame profiler always said the game was fine.
+   *
+   * So the capsule keeps teleporting (it must — collision depends on it) and
+   * the CAMERA lags behind by whatever was gained, catching up exponentially.
+   *
+   *   tau  0.07 s to 63 %, ~0.2 s to settle. Slower reads as floating; faster
+   *        stops hiding anything.
+   *   max  never lag more than this, or a big legitimate step (a mantle, a
+   *        drop resolved as a step) would sink the camera into the floor.
+   */
+  stepSmooth: {
+    tau: 0.07,
+    max: 0.5,
+  },
+
   land: {
     /** Fall speed at which a landing starts to register at all. */
     minSpeed: 2.2,

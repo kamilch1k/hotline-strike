@@ -77,6 +77,8 @@ export class CameraRig {
 
     // ---- slide -----------------------------------------------------------
     this.slideBlend = 0;
+    /** How far the eye is currently lagging BELOW the capsule. See CAMERA.stepSmooth. */
+    this.stepSmooth = 0;
     this.slideSide = 1;
 
     // ---- outputs (read by weapons for counter-motion) --------------------
@@ -111,6 +113,7 @@ export class CameraRig {
     this.turnRoll = 0;
     this.slideRoll = 0;
     this.slideBlend = 0;
+    this.stepSmooth = 0;
     this.fovMove = 1;
     this.fovAds = 1;
   }
@@ -276,8 +279,26 @@ export class CameraRig {
     // Lean is applied in world space further down (it comes from the validated
     // capsule probe, not from the bob basis).
     const lateral = bobX + shakeX;
+    /**
+     * STEP SMOOTHING. The capsule gains a stair's height in a single frame; the
+     * eye must not. Take whatever the controller just stepped up, hold it as a
+     * downward lag, and bleed it off — the camera then rises continuously while
+     * collision keeps its instant, correct position.
+     *
+     * Mantles are excluded: they drive the camera themselves through `mantleY`,
+     * and smoothing on top of that fights an authored motion.
+     */
+    const gained = mm.active ? 0 : (m.character?.steppedUp ?? 0);
+    if (gained > 1e-4) {
+      this.stepSmooth = Math.min(this.stepSmooth + gained, CAMERA.stepSmooth.max);
+    }
+    if (this.stepSmooth > 0) {
+      this.stepSmooth *= Math.exp(-dt / CAMERA.stepSmooth.tau);
+      if (this.stepSmooth < 1e-4) this.stepSmooth = 0;
+    }
+
     const vertical = bobY + this.dip.value + this.step.value + shakeY + mantleY + breathPos
-      - this.slideBlend * 0.1;
+      - this.slideBlend * 0.1 - this.stepSmooth;
     const forward = bobZ + this.punch.value + mantleFwd + this.slideBlend * 0.045;
 
     this.offset.set(0, 0, 0);
