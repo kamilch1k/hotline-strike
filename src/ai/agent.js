@@ -365,16 +365,41 @@ export class Agent {
      * reason — the threat is that they are always coming, and the interest is in
      * position and crowd control, not in whether they have spotted you.
      */
+    /**
+     * EVERY ENEMY HUNTS, not just the rushers.
+     *
+     * This used to be `if (this.rush)`. Measured with tools/aicheck.mjs on both
+     * shipping maps: over 450 frames the rushers closed 10-43 m and sat in
+     * `combat`, while vanguard/irregular/breacher closed -0.3 to +0.4 m, moved
+     * 1.8 m, were stuck 8 of 9, several facing away from the player, and never
+     * left `patrol` — they never acquired at all. That is the "sits in a corner
+     * waiting to be found" bug exactly, and it is a mode mismatch: sight cones,
+     * awareness build-up and cover are what make a soldier worth flanking in a
+     * versus round, and in a horde they produce a garrison that never noticed
+     * a fight was happening.
+     *
+     * Acquisition is now unconditional. It does NOT flatten the variants —
+     * only `rush` agents charge; soldiers still run the cover-shooter tree in
+     * `_think`, they simply do it while actually coming for you.
+     *
+     * The cost, written down rather than discovered: STRIKE mode's soldiers
+     * lose the "has not spotted you yet" window, so flanking them is worth less
+     * there. Strike is not in the menu (ui/mainmenu.js MODES) and horde is the
+     * mode that ships, so this trades an unshipped mode's texture for the
+     * shipped one's core loop working.
+     */
+    this.lastKnown.copy(player);
+    this.lastKnownAge = 0;
+    this.awareness = 1;
+    this.alertness = 1;
+    this.hasTarget = true;
+    this.target = player;
     if (this.rush) {
-      this.lastKnown.copy(player);
-      this.lastKnownAge = 0;
-      this.awareness = 1;
-      this.alertness = 1;
-      this.hasTarget = true;
-      this.target = player;
       this.targetVisible = true;
       return;
     }
+    // Soldiers still resolve real line of sight below — they know WHERE you
+    // are, but whether they can actually shoot you stays an honest query.
 
     const eye = this.eye;
     const to = this._dir.copy(player).sub(eye);
