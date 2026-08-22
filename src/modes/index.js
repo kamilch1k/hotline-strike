@@ -304,6 +304,24 @@ export function createMode(ctx) {
  * round is scored, and a no-op for the modes that have no rules — `tdm` still
  * behaves exactly as it always did, with no mode object in the way.
  */
+/**
+ * Modes that spawn their own enemies, and must therefore start on an EMPTY map.
+ *
+ * `AiSystem.init()` garrisons every non-sandbox level with a default soldier
+ * patrol. For a mode that runs its own waves that garrison is actively
+ * destructive, in two ways at once:
+ *
+ *   1. it is the wrong roster — Holdout asks for ghouls and got
+ *      vanguard/irregular/breacher, because the garrison ignores `roster()`;
+ *   2. it keeps `aliveCount()` above zero forever, and both modes only start a
+ *      wave/round when the board is clear, so `begin()` was NEVER reached.
+ *
+ * Measured on outpost/horde: stuck on wave 1 indefinitely, fighting a soldier
+ * patrol that holds position ~30 m away. That is the "enemies just sit there
+ * and never chase" report — they were not horde enemies at all.
+ */
+export const MODES_OWN_SPAWNING = new Set(['horde', 'strike']);
+
 export class ModeSystem {
   static id = 'mode';
   static deps = ['ai', 'ui'];
@@ -311,7 +329,16 @@ export class ModeSystem {
   init(ctx) {
     this.ctx = ctx;
     this.mode = createMode(ctx);
-    if (this.mode) console.info(`[mode] ${ctx.config.mode}`);
+    if (this.mode) {
+      console.info(`[mode] ${ctx.config.mode}`);
+      /**
+       * Open on a short break so `begin()` actually runs. BaseMode starts in
+       * 'live', and `live()` only calls through to `begin()` once the board is
+       * empty — which meant the opening wave depended on someone else having
+       * populated the map first. Now the mode always deals its own first hand.
+       */
+      this.mode.startBreak(1.2);
+    }
   }
 
   update(dt) {

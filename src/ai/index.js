@@ -46,6 +46,7 @@ import { NavGrid, CoverMap } from './nav.js';
 import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
+import { MODES_OWN_SPAWNING } from '../modes/index.js';
 import { attachBillboard, disposeFaces, prewarmFaces } from './billboard.js';
 
 export class AiSystem {
@@ -206,6 +207,8 @@ export class AiSystem {
       if (
         !this._navPending &&
         ctx.config.mode !== 'sandbox' &&
+        // A mode that runs its own waves must open on an empty board.
+        !MODES_OWN_SPAWNING.has(ctx.config.mode) &&
         (!ctx.config.deterministic || this.forcePopulate)
       )
         this.populate();
@@ -970,6 +973,8 @@ export class AiSystem {
       if (
         !this._navPending &&
         ctx.config.mode !== 'sandbox' &&
+        // A mode that runs its own waves must open on an empty board.
+        !MODES_OWN_SPAWNING.has(ctx.config.mode) &&
         (!ctx.config.deterministic || this.forcePopulate)
       )
         this.populate();
