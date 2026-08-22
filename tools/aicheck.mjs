@@ -85,7 +85,12 @@ for (const variant of VARIANTS) {
 
     const rows = live.map((a, k) => {
       const endDist = a.position.distanceTo(here);
-      const gy = phys.groundHeight(a.position.x, a.position.z, a.position.y + 8);
+      // From just above the FEET, not from the sky. Rays cast from +8 m hit
+        // whatever roof or terrace the agent is walking under and report a
+        // healthy agent as buried - which is exactly the false alarm that sent
+        // an earlier hunt for an "underground" bug that did not exist. The grid
+        // has two storeys now, so walking under things is normal.
+        const gy = phys.groundHeight(a.position.x, a.position.z, a.position.y + 0.6);
       const sunk = Number.isFinite(gy) ? gy - a.position.y : 0;
       // Facing: agents carry `yaw`; forward is (sin, cos) in this engine's
       // convention (see movement.js sampling sy/cy).

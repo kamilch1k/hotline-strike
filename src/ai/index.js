@@ -735,10 +735,18 @@ export class AiSystem {
           .add(new THREE.Vector3(Math.cos(jitterA) * jitterR, 0, Math.sin(jitterA) * jitterR));
         const ci = this.grid.nearest(p.x, p.z, anchor.position.y, 6, 1.4);
         if (ci >= 0) {
+          /**
+           * ixOf/izOf, never `% nx`. The grid has storeys now, so a flat index
+           * on the lower one is `n + iz * nx + ix`; decoding it with `% nx`
+           * lands on a cell hundreds of metres off the map. That is not
+           * hypothetical - it spawned two ghouls a wave at z = 193 on a map
+           * that ends at z = 35, where there is no floor, and they fell for
+           * 2289 m before the run ended.
+           */
           p.set(
-            this.grid.worldX(ci % this.grid.nx),
+            this.grid.worldX(this.grid.ixOf(ci)),
             this.grid.floor[ci],
-            this.grid.worldZ((ci / this.grid.nx) | 0)
+            this.grid.worldZ(this.grid.izOf(ci))
           );
         } else {
           p.y = this.groundAt(p.x, p.z, anchor.position.y + 4);

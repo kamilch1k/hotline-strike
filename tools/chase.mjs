@@ -75,7 +75,8 @@ const r = await p.evaluate(
           s.min = Math.min(s.min, d);
           s.last = d;
           s.states.add(a.state);
-          const gy = phys?.groundHeight?.(a.position.x, a.position.z, a.position.y + 8);
+          // See aicheck.mjs: from the feet, or every agent under a roof reads sunk.
+          const gy = phys?.groundHeight?.(a.position.x, a.position.z, a.position.y + 0.6);
           if (Number.isFinite(gy)) s.sunk = Math.max(s.sunk, gy - a.position.y);
         }
 
