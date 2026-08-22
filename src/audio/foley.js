@@ -670,12 +670,34 @@ export function uiSound(actx, bank, rng, kind, o = {}) {
   const lvl = o.level ?? 1;
   switch (kind) {
     case 'hitmarker': {
+      /**
+       * TICK PLUS BODY.
+       *
+       * This used to be the square alone: a 2.4 kHz tick with a 22 ms decay and
+       * nothing under it. Measured through the real mixer (selftest.js) that is
+       * RMS 0.003 with a 125 Hz centroid contributed by nothing at all, against
+       * RMS 0.044 for the shot that caused it - the confirmation that you hit
+       * someone was 23 dB below the trigger pull, which is most of why landing
+       * shots felt like nothing.
+       *
+       * Loudness alone would not fix it; a thin square just gets louder and
+       * more irritating. The tick says WHEN, a short low sine says THAT IT WAS
+       * A BODY. Kept under 90 ms so a fast fire rate does not turn into mush.
+       */
       const o1 = osc(actx, 'square', 2400);
       const g = gain(actx, 0);
       const lp = biquad(actx, 'lowpass', 5200, 0.7);
       o1.connect(g); series(g, lp).connect(out);
       hit(g.gain, t0, 0.55 * lvl, 0.022);
       o1.start(t0); o1.stop(t0 + 0.06);
+
+      const body = osc(actx, 'sine', 190);
+      const bg = gain(actx, 0);
+      body.connect(bg); bg.connect(out);
+      body.frequency.setValueAtTime(190, t0);
+      body.frequency.exponentialRampToValueAtTime(105, t0 + 0.08);
+      hit(bg.gain, t0, 0.62 * lvl, 0.075);
+      body.start(t0); body.stop(t0 + 0.11);
       break;
     }
     case 'headshot': {
@@ -683,9 +705,20 @@ export function uiSound(actx, bank, rng, kind, o = {}) {
       const o2 = osc(actx, 'square', 4800);
       const g = gain(actx, 0);
       o1.connect(g); o2.connect(g); g.connect(out);
-      hit(g.gain, t0, 0.34 * lvl, 0.05);
+      hit(g.gain, t0, 0.46 * lvl, 0.05);
       o1.start(t0); o2.start(t0 + 0.03);
       o1.stop(t0 + 0.12); o2.stop(t0 + 0.14);
+      // Same body as the hitmarker, pitched up: a headshot is the rarest and
+      // most rewarding thing you can do, and it was measuring as the QUIETEST
+      // event in the game (RMS 0.003). It should hit harder than a body shot,
+      // not softer.
+      const hbody = osc(actx, 'sine', 240);
+      const hg = gain(actx, 0);
+      hbody.connect(hg); hg.connect(out);
+      hbody.frequency.setValueAtTime(240, t0);
+      hbody.frequency.exponentialRampToValueAtTime(120, t0 + 0.1);
+      hit(hg.gain, t0, 0.72 * lvl, 0.09);
+      hbody.start(t0); hbody.stop(t0 + 0.14);
       break;
     }
     case 'kill': {
@@ -696,6 +729,15 @@ export function uiSound(actx, bank, rng, kind, o = {}) {
         ad(g.gain, t0 + i * 0.055, 0.3 * lvl, 0.004, 0.09);
         o1.start(t0 + i * 0.055); o1.stop(t0 + i * 0.055 + 0.2);
       }
+      // A kill is the one piece of feedback worth landing in the chest as well
+      // as the ear: the arpeggio says WHAT happened, this says it mattered.
+      const thump = osc(actx, 'sine', 150);
+      const tg = gain(actx, 0);
+      thump.connect(tg); tg.connect(out);
+      thump.frequency.setValueAtTime(150, t0);
+      thump.frequency.exponentialRampToValueAtTime(72, t0 + 0.16);
+      hit(tg.gain, t0, 0.7 * lvl, 0.15);
+      thump.start(t0); thump.stop(t0 + 0.22);
       break;
     }
     case 'damage': {

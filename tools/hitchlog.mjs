@@ -15,7 +15,13 @@ import { chromium } from 'playwright';
 const URL = process.argv[2] ?? 'http://127.0.0.1:5181/?map=holdout&menu=0';
 const SECONDS = Number(process.argv[3] ?? 25);
 
-const b = await chromium.launch({ headless: true, args: ['--mute-audio'] });
+// HEADED=1 runs on the real GPU. Headless software-rasterises, which makes
+// `render` fiction and hides exactly the frames this is hunting.
+const b = await chromium.launch({
+  headless: !process.env.HEADED,
+  args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required',
+         '--window-position=0,0', '--window-size=1280,760'],
+});
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 
 const hitches = [];

@@ -50,7 +50,20 @@ export class Mixer {
     // Headroom stage. It sits BEFORE the compressor/clipper on purpose: a
     // post-limiter volume control only scales an already-squashed signal, and
     // that is what destroys the difference between a footstep and a gunshot.
-    this.preGain = gain(actx, 0.22);
+    /**
+     * MEASURED, not guessed. src/audio/selftest.js renders every voice through
+     * this exact chain and reports peak/RMS. At 0.22 the player's own rifle came
+     * out at peak 0.455 / RMS 0.0287 (-31 dBFS) and surface impacts at -40 to
+     * -50 dBFS, which is the "sounds are underwhelming" report: half the
+     * available headroom was simply never used, and the hit feedback that tells
+     * you a shot landed was 20 dB under the shot that caused it.
+     *
+     * 0.34 puts a rifle shot near -3 dBFS peak, leaving the compressor and the
+     * soft clipper below to hold a firefight together rather than to fix a
+     * chronically quiet mix. Re-run `node src/audio/probe.mjs --port=PORT` after
+     * touching this: any case reaching peak >= 1.0 means it went too far.
+     */
+    this.preGain = gain(actx, 0.34);
     this.masterComp = actx.createDynamicsCompressor();
     // Safety net only: a single gunshot should barely touch it, a firefight
     // plus a grenade should be held together by it.
