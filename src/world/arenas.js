@@ -103,10 +103,13 @@ const STRIKE = [
 ];
 
 const STRIKE_SPAWNS = [
-  [-28, -18, 0.8, 'west spawn'],
-  [-24, -19, 0.8, 'west spawn 2'],
-  [28, -18, -0.8, 'east spawn'],
-  [24, -19, -0.8, 'east spawn 2'],
+  // West/east spawns sit 1.4 m off the spawn-side cover; jitter (0.8-3.2 m in
+  // populate()) could open inside the crate. Nudged south: ~2.5 m off the cover,
+  // ~2 m off the perimeter wall, still inside the 64x44 shell.
+  [-28, -19.5, 0.8, 'west spawn'],
+  [-23, -20, 0.8, 'west spawn 2'],
+  [28, -19.5, -0.8, 'east spawn'],
+  [23, -20, -0.8, 'east spawn 2'],
   [-28, 18, Math.PI - 0.6, 'long west'],
   [28, 18, Math.PI + 0.6, 'long east'],
 ];
@@ -226,6 +229,45 @@ const HOLDOUT = [
   [27, -23.5, 0.8, 8, 0.9, 0, 'tile_floor', 0],
   // diving platform — elevation in the corner furthest from safety
   [25, -14, 4, 4, 2.2, 0, 'plaster_cream', 0],
+  // cap plate: an overhang is what makes a lid look like a lid
+  [25, -14, 4.4, 4.4, 0.14, 0, 'tile_floor', 2.2],
+
+  /* ---- DRESSING — objects read as one thing, not one box ----------------
+   * Every row below reuses a material already on this map (see ARENAS.holdout):
+   * a material new to a map buys shader programs at boot and its own draw batch
+   * per frame, so the buy here is purely in arrangement — posts under the
+   * floating awnings, caps on the parapet and planters, a plaza apron to break
+   * the single sand plane, and landmarks (gate, shade) you can name a fight by.
+   */
+  // Plaza apron around the keep: 6 cm, under the step height, so the nav grid
+  // walks straight over it and the covers sitting on it bury invisibly.
+  [0, 0, 26, 26, 0.06, 0, 'concrete_dark', 0],
+  // Keep parapet corner posts — the silhouette from the gates.
+  [-9.6, -9.6, 0.7, 0.7, 1.5, 0, 'concrete_prop', PLINTH],
+  [9.6, -9.6, 0.7, 0.7, 1.5, 0, 'concrete_prop', PLINTH],
+  [-9.6, 9.6, 0.7, 0.7, 1.5, 0, 'concrete_prop', PLINTH],
+  [9.6, 9.6, 0.7, 0.7, 1.5, 0, 'concrete_prop', PLINTH],
+  // Market awning posts: the slabs at 2.3 used to float. Wood, like the stalls.
+  [17.3, 15.5, 0.18, 0.18, 2.3, 0, 'wood_prop', 0],
+  [22.7, 15.5, 0.18, 0.18, 2.3, 0, 'wood_prop', 0],
+  [24.5, 17.3, 0.18, 0.18, 2.3, 0, 'wood_prop', 0],
+  [24.5, 22.7, 0.18, 0.18, 2.3, 0, 'wood_prop', 0],
+  [12.8, 20.5, 0.18, 0.18, 2.3, 0, 'wood_prop', 0],
+  [17.2, 20.5, 0.18, 0.18, 2.3, 0, 'wood_prop', 0],
+  // Planter and obstacle caps: lids overhanging their boxes.
+  [-22, 14, 6.4, 1.0, 0.12, 0, 'concrete_prop', 0.7],
+  [-27, 26, 4.2, 1.0, 0.14, 0, 'concrete_prop', 1.9],
+  // Pool shade: plaster posts, teal canopy — the deck reads from anywhere.
+  [15.3, -31.3, 0.2, 0.2, 2.4, 0, 'plaster_cream', 0],
+  [18.7, -31.3, 0.2, 0.2, 2.4, 0, 'plaster_cream', 0],
+  [15.3, -28.7, 0.2, 0.2, 2.4, 0, 'plaster_cream', 0],
+  [18.7, -28.7, 0.2, 0.2, 2.4, 0, 'plaster_cream', 0],
+  [17, -30, 4.2, 3.4, 0.18, 0, 'fabric_teal', 2.4],
+  // North gate marker: two posts and a lintel. Lintel underside at 3.0 m —
+  // headroom for the wave walking under it, landmark for the player on the keep.
+  [-3.5, 29, 0.5, 0.5, 3.0, 0, 'plaster_cream', 0],
+  [3.5, 29, 0.5, 0.5, 3.0, 0, 'plaster_cream', 0],
+  [0, 29, 7.5, 0.5, 0.5, 0, 'tile_floor', 3.0],
 
   /* ---- approach cover, all four gates ---------------------------------- */
   [0, 24, 6, 1.1, 1.05, 0, 'concrete_prop', 0],
@@ -245,10 +287,15 @@ const HOLDOUT = [
  */
 const HOLDOUT_SPAWNS = [
   [0, 4, 0, 'the keep'],
-  [-27, 27, -2.4, 'garden'],
+  // Garden spawn sits 2 m clear of the rotated planter box: the old [-27, 27]
+  // was inside its footprint after the 0.4 yaw, so the wave opened with a snap
+  // from inside concrete to the nearest walkable cell.
+  [-27, 29, -2.4, 'garden'],
   [27, 27, 2.4, 'market'],
   [-27, -27, -0.7, 'yard'],
-  [27, -27, 0.7, 'pool'],
+  // Pool spawn was ON the south rim wall ([20, -27] spans x 13..27 at z -27):
+  // moved to open ground south-east of the basin, keeping the SE bearing.
+  [29, -29, 0.7, 'pool'],
   [0, 29, Math.PI, 'north gate'],
 ];
 
@@ -949,8 +996,53 @@ export const ARENAS = {
       groundAlbedo: 0xb08a5c,
     },
   },
-  strike: { walls: STRIKE, spawns: STRIKE_SPAWNS, floor: [68, 48], ground: 'road_dust' },
-  holdout: { walls: HOLDOUT, spawns: HOLDOUT_SPAWNS, floor: [68, 68], ground: 'sand' },
+  /**
+   * STRIKE and HOLDOUT used to carry no sky/weather/exposure of their own, so
+   * both lit by the default midday overcast — which is why they photographed as
+   * grey concrete whatever the palette said. A flat overhead sun plus haze
+   * washes every tint back to stone (see the MIAMI notes); each map below now
+   * carries its own hour and a clear sky, same as outpost/miami/zone already do.
+   * No new materials involved, so no new shader programs at boot.
+   */
+  strike: {
+    walls: STRIKE,
+    spawns: STRIKE_SPAWNS,
+    floor: [68, 48],
+    ground: 'road_dust',
+    // 13.5: near-neutral sun like MIAMI — dust, not beige.
+    sky: 13.5,
+    exposure: -0.6,
+    weather: {
+      cloudCoverage: 0.08,
+      cirrusCoverage: 0.15,
+      turbidity: 2.0,
+      horizonMurk: 0.08,
+      // Zero: fog accumulates to full opacity at sky distance and REPLACES the
+      // dome with grey rather than tinting it (measured on MIAMI).
+      fogDensity: 0,
+      groundAlbedo: 0xb08a5c,
+    },
+  },
+  holdout: {
+    walls: HOLDOUT,
+    spawns: HOLDOUT_SPAWNS,
+    floor: [68, 68],
+    ground: 'sand',
+    // 16.8: golden late afternoon, distinct from outpost (15.4) and zone's
+    // overcast (16.2). Low sun puts a long shadow off every wall and separates
+    // the sand planes; the districts keep their colours instead of washing out.
+    sky: 16.8,
+    /** Negative EV = brighter: the stylised districts sit above middle grey. */
+    exposure: -0.8,
+    weather: {
+      cloudCoverage: 0.06,
+      cirrusCoverage: 0.18,
+      turbidity: 2.4,
+      horizonMurk: 0.1,
+      fogDensity: 0,
+      groundAlbedo: 0xbd9a68,
+    },
+  },
   /**
    * 13.0, measured rather than picked. tools/hour-sweep.mjs prints the sun's
    * blue/red ratio against the hour: it peaks at 0.755 around noon and falls
